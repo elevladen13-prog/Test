@@ -1,0 +1,137 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Ore Sword Simulator</title>
+<style>
+:root{--bg:#f0ede4;--pn:#fffdf6;--tx:#222;--bt:#d9d2bd;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151f;--pn:#232940;--tx:#eee;--bt:#3a4262}}
+:root[data-theme="dark"]{--bg:#12151f;--pn:#232940;--tx:#eee;--bt:#3a4262}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;text-align:center}
+#h{padding:6px;font-size:13px}#w{position:relative;max-width:900px;margin:auto}canvas{width:100%;display:block;background:#000;touch-action:none}
+#p{display:none;position:absolute;inset:8px;overflow:auto;background:var(--pn);border:2px solid var(--bt);border-radius:8px;padding:10px;text-align:left}
+#m{position:absolute;top:8px;left:0;right:0;font-weight:700;color:#fff;text-shadow:0 0 4px #000,0 0 4px #000;pointer-events:none}
+button{background:var(--bt);color:var(--tx);border:1px solid #888;border-radius:6px;padding:5px 9px;margin:2px;cursor:pointer}
+button.on{outline:2px solid #fc3}.o i{display:inline-block;width:12px;height:12px;margin-right:4px;border-radius:3px}.o i.glow{box-shadow:0 0 8px 2px var(--c)}
+.o{border-color:var(--c)}</style></head><body>
+<div id="h"></div><div id="w"><canvas id="c" width="900" height="520"></canvas><div id="m"></div><div id="p"></div></div>
+<div style="padding:6px"><button onclick="pb()">Bag / Enchant</button><button onclick="pf()">Forge</button><button onclick="ps()">Skills</button><button onclick="pr()">Rebirth</button> &nbsp; WASD/arrows move &middot; Space/click attack &middot; E interact (or tap objects)</div>
+<script>
+const $=i=>document.getElementById(i),cv=$('c'),g=cv.getContext('2d'),W=900,H=520;
+const RN=["Common","Uncommon","Rare","Epic","Legendary","Elite","Defying","Special"],RC=["#bbb","#6d6","#58f","#b5f","#fb2","#f55","#f0c","#0ff"];
+const ON=["Stone","Copper","Iron","Gold","Crystal","Ruby","Voidstone","Starcore"],CNT=[20,20,20,20,18,14,10,8],DB=[5,15,40,100,250,600,1500,4000];
+const AD=[["Rusty","Wooden","Plain","Dull","Simple"],["Bronze","Sturdy","Keen","Hardened","Forged"],["Steel","Silver","Azure","Jade","Gilded"],["Arcane","Frost","Ember","Storm","Shadow"],["Radiant","Dragon","Titan","Phoenix","Solar"],["Brutal","Crimson","Warlord","Cursed","Obsidian"],["Defiant","Abyssal","Rift","Fatebreak","Oblivion"]];
+const TY=["Sword","Blade","Axe","Spear","Dagger","Mace","Katana","Hammer"],XS=["Starfall","Eclipse","Aether","Worldbreaker","Cosmic"],NM=["Doom-Slayer","Divine Sinister","Gravity Hammer"];
+const WP=[],AR=[];
+CNT.forEach((n,r)=>{for(let i=0;i<n;i++){let w={id:WP.length,r,col:RC[r],ty:(i*3+r)%8,len:22+(i*7+r*5)%24,wid:3+(i*5)%4,sp:0};
+ if(r<7){w.n=AD[r][i%5]+" "+TY[i%8];w.d=Math.round(DB[r]*(1+i*.06))}
+ else if(i<5){w.n=XS[i]+" "+TY[(i*3)%8];w.d=Math.round(4000*(1+i*.1))}
+ else{let k=i-5;w.n=NM[k];w.sp=k+1;w.ty=k==2?7:1;w.len=52;w.wid=6;w.col=["#f22","#a0f","#6cf"][k]}
+ WP.push(w)}});
+const REF=Math.max(...WP.filter(w=>!w.sp).map(w=>w.d));
+WP.forEach(w=>{if(w.sp)w.d=Math.round(REF*[4,3.5,3.75][w.sp-1])}); // Doom 300% more, Gravity 275%, Divine 250%
+for(let r=0;r<8;r++)for(let k=0;k<3;k++)AR.push({id:AR.length,r,k,n:(r<7?AD[r][k]:"Starforged")+" "+["Tunic","Plate","Aegis"][k],def:Math.round([2,6,15,35,80,180,400,1000][r]*(1+k*.25))});
+const WN=["Verdant Meadow","Crystal Caves","Magma Depths","Void Citadel"],WC=["#3d7a3d","#37496b","#722a18","#271846"],MC=["#6c6","#6bd","#f84","#a5f"],WH=[30,400,6000,100000],WD=[3,15,80,400],WR=[2,15,150,2000],PR=[0,500,8000,150000],WO=[[0,1],[1,2,3],[2,3,4,5],[4,5,6,7]];
+const SKN={P:"Power",H:"Haste",F:"Fortune",V:"Vigor"},TN=["D","C","B","A","S","SS"],TM=[1.1,1.25,1.5,2,3,5],TW=[40,28,16,9,5,2];
+const EN=[["Sharpness",.15],["Haste",.1],["Plunder",.2],["Vampire",.02],["Giant",.1]];
+const S={coins:50,str:0,reb:0,ores:Array(8).fill(0),w:{0:1},a:{},eq:0,ea:-1,sk:{},en:{},ei:[],un:[1,0,0,0],done:[0,0,0,0],tw:0,won:0,rolls:0};
+const sm=t=>S.sk[t]!=null?TM[S.sk[t]]:1,luck=()=>(1+S.ores.reduce((a,n,t)=>a+n*(t+1),0)*.01)*sm('F');
+const enc=k=>(S.en[S.eq]||[]).filter(x=>x==k).length*EN[k][1],dmg=()=>WP[S.eq].d*(1+S.str*.02)*sm('P')*(1+enc(0));
+const def=()=>S.ea>=0?AR[S.ea].def:0,mhp=()=>Math.round((100+def()*.5)*sm('V')),tm=()=>S.reb>=10?8:S.reb>=5?4:S.reb>=2?2:1.5;
+const f=n=>n>=1e6?(n/1e6).toFixed(2)+"M":n>=1e4?(n/1e3).toFixed(1)+"K":Math.floor(n)+"";
+const P={x:450,y:300,hp:100};let cur='hub',mons=[],pr_=[],fl_=[],cd=0,sw=0,st=1,fl=1,pend=0,wt=0,po=0,boss=0,tgt=null,face=1,lastN=5,trn=0,mt=0;
+// ---------- weapon drawing (each model differs by type/length/width, glow for rare+) ----------
+function dw(c,w,x,y,a,s){c.save();c.translate(x,y);c.rotate(a);c.scale(s,s);let L=w.len,Wd=w.wid,col=w.col;
+ if(w.r>=3||w.sp){c.shadowColor=col;c.shadowBlur=6+w.r*3}
+ c.fillStyle='#753';c.fillRect(-2,-3,4,13);c.fillStyle=col;c.strokeStyle=col;
+ if(w.sp==1){c.beginPath();c.moveTo(-Wd,-4);for(let i=0;i<6;i++){c.lineTo(i%2?-Wd:-Wd-5,-4-i*9)}c.lineTo(0,-64);for(let i=5;i>=0;i--){c.lineTo(i%2?Wd:Wd+5,-4-i*9)}c.fill();c.fillStyle='#fc3';c.fillRect(-12,-6,24,4)}
+ else if(w.sp==2){c.fillStyle='#14001f';c.lineWidth=2;c.beginPath();c.moveTo(-6,-4);c.lineTo(-8,-40);c.lineTo(0,-62);c.lineTo(8,-40);c.lineTo(6,-4);c.closePath();c.fill();c.stroke();c.fillStyle=col;c.fillRect(-11,-6,22,4)}
+ else if(w.sp==3){c.fillRect(-1.5,-44,3,50);c.fillRect(-14,-58,28,16);c.lineWidth=2;c.beginPath();c.ellipse(0,-50,22,8,0,0,7);c.stroke()}
+ else if(w.ty==2){c.fillRect(-1.5,-L,3,L+6);c.beginPath();c.moveTo(1,-L);c.lineTo(14,-L-6);c.lineTo(14,-L+14);c.lineTo(1,-L+10);c.fill()}
+ else if(w.ty==3){c.fillRect(-1.5,-L-6,3,L+10);c.beginPath();c.moveTo(-5,-L-6);c.lineTo(0,-L-22);c.lineTo(5,-L-6);c.fill()}
+ else if(w.ty==5){c.fillRect(-1.5,-L,3,L+6);c.beginPath();c.arc(0,-L-4,7,0,7);c.fill();for(let i=0;i<6;i++)c.fillRect(Math.cos(i)*8-1,-L-4+Math.sin(i)*8-1,3,3)}
+ else if(w.ty==7){c.fillRect(-1.5,-L,3,L+6);c.fillRect(-10,-L-8,20,14)}
+ else{let q=w.ty==4?.6:1,v=w.ty==6?.6:1;c.beginPath();c.moveTo(-Wd*v,-4);c.lineTo(-Wd*v,-4-L*q);c.lineTo(0,-8-L*q);c.lineTo(Wd*v,-4-L*q);c.lineTo(Wd*v,-4);c.fill();c.fillStyle='#fc3';c.fillRect(-Wd-3,-5,2*Wd+6,3)}
+ c.restore()}
+function drawP(){const x=P.x,y=P.y;g.fillStyle='#0004';g.beginPath();g.ellipse(x,y+9,14,5,0,0,7);g.fill();
+ const arm=S.ea>=0?AR[S.ea]:null,tn=arm?RC[arm.r]:'#2e9e3a';g.save();if(arm&&arm.r>=3){g.shadowColor=tn;g.shadowBlur=10}
+ g.fillStyle='#e9e2d0';g.fillRect(x-8,y-2,7,9);g.fillRect(x+1,y-2,7,9);g.fillStyle='#5a3a1a';g.fillRect(x-8,y+5,7,4);g.fillRect(x+1,y+5,7,4);
+ g.fillStyle=tn;g.fillRect(x-9,y-18,18,17);g.fillRect(x-14,y-18,5,12);g.fillRect(x+9,y-18,5,12);g.fillStyle='#6b4423';g.fillRect(x-9,y-8,18,3);g.fillStyle='#fc3';g.fillRect(x-2,y-9,4,5);
+ g.fillStyle='#f1c27d';g.fillRect(x-14,y-6,5,4);g.fillRect(x+9,y-6,5,4);g.fillRect(x-9,y-34,18,16);
+ g.beginPath();g.moveTo(x-9,y-26);g.lineTo(x-17,y-31);g.lineTo(x-9,y-22);g.moveTo(x+9,y-26);g.lineTo(x+17,y-31);g.lineTo(x+9,y-22);g.fill();
+ g.fillStyle='#e8c04a';g.fillRect(x-9,y-34,18,4);g.fillStyle='#235';g.fillRect(x-5,y-27,3,3);g.fillRect(x+2,y-27,3,3);
+ g.fillStyle='#2e9e3a';g.beginPath();g.moveTo(x-10,y-32);g.lineTo(x+10,y-32);g.lineTo(x+11,y-37);g.lineTo(x,y-45);g.lineTo(x-14,y-40);g.lineTo(x-20,y-30);g.lineTo(x-11,y-34);g.fill();g.restore();
+ dw(g,WP[S.eq],x+14*face,y-8,(sw>0?1.6-sw*8:.5)*face,.8)}
+function drawM(m){let r=m.r;g.fillStyle='#0004';g.beginPath();g.ellipse(m.x,m.y+r*.6,r,r*.4,0,0,7);g.fill();
+ if(m.boss){g.shadowColor='#f0f';g.shadowBlur=20}g.fillStyle=m.col;g.beginPath();g.ellipse(m.x,m.y,r,r*.85,0,0,7);g.fill();g.shadowBlur=0;
+ g.fillStyle='#000';g.fillRect(m.x-r*.45,m.y-r*.3,r*.25,r*.3);g.fillRect(m.x+r*.2,m.y-r*.3,r*.25,r*.3);
+ if(m.boss){g.fillStyle='#fc3';g.fillRect(m.x-r*.6,m.y-r*1.2,r*1.2,r*.3)}
+ g.fillStyle='#300';g.fillRect(m.x-r,m.y-r-8,r*2,4);g.fillStyle='#e33';g.fillRect(m.x-r,m.y-r-8,r*2*Math.max(0,m.hp/m.mh),4)}
+// ---------- areas ----------
+const os=()=>{let o=[{x:W-70,y:70,t:'ex',l:'Hub',c:'#ccc'},{x:150,y:420,t:'st'}];if(cur=='hub')o=[{x:130,y:110,t:'fg',l:'FORGE',c:'#f80'},{x:330,y:110,t:'sh',l:'SKILL SHRINE',c:'#a5f'},{x:540,y:110,t:'rb',l:'REBIRTH',c:'#fc3'},{x:780,y:110,t:'tw',l:'TOWER',c:'#ddd'},{x:450,y:300,t:'st'}].concat([0,1,2,3].map(i=>({x:150+i*180,y:450,t:'w'+i,l:WN[i]+(S.un[i]?'':' $'+f(PR[i])),c:MC[i]})));return o};
+function enter(a){cur=a;mons=[];pr_=[];P.x=a=='hub'?450:100;P.y=a=='hub'?250:150;st=1;pend=1;wt=.6;boss=0;if(a=='tw')fl=S.tw+1;if(a!='hub')msg(a=='tw'?'Tower - Floor '+fl:WN[a])}
+function sp(n,h,d,s,col,r){lastN=n;for(let i=0;i<n;i++){let x,y;do{x=40+Math.random()*(W-80);y=80+Math.random()*(H-120)}while(Math.hypot(x-P.x,y-P.y)<200);mons.push({x,y,hp:h,mh:h,dm:d,sp:s,col,r,cd:0})}}
+function ns(){if(cur=='tw'){sp(3+Math.min(fl,8),100*1.2**fl,15*1.12**fl,70,'#c55',14);return}
+ if(cur==3&&S.done.every(x=>x)&&!S.won){boss=1;sp(1,2e6,700,70,'#c3f',46);mons[0].sh=2;msg('THE ORE TYRANT AWAKENS!');return}
+ let m=1+.5*(Math.min(st,3)-1);sp(5,WH[cur]*m,WD[cur]*m,55+cur*8,MC[cur],13)}
+function clear(){if(cur=='tw'){S.tw=fl;let k=Math.floor(Math.random()*5);S.ei.push(k);S.coins+=50*fl;msg('Floor '+fl+' clear! Got enchant: '+EN[k][0]+' (open Bag to apply)');fl++;return}
+ let n=boss?20:lastN*2,g2={};for(let i=0;i<n;i++){let L=WO[cur],t=L[Math.min(L.length-1,Math.floor(Math.pow(Math.random(),1/(1+luck()*.05))*L.length))];S.ores[t]++;g2[t]=(g2[t]||0)+1}
+ msg('Stage clear! '+Object.entries(g2).map(([t,c])=>c+' '+ON[t]).join(', '));
+ if(boss){boss=0;S.won=1;po=1;$('p').style.display='block';$('p').innerHTML='<h2>VICTORY!</h2><p>You defeated the Ore Tyrant and finished Ore Sword Simulator! Keep grinding for Doom-Slayer, Divine Sinister and the Gravity Hammer.</p><button onclick="cp()">Keep playing</button>';return}
+ if(st>=3){S.done[cur]=1;if(cur==3&&S.done.every(x=>x)&&!S.won)msg('All worlds beaten - the boss awaits in the Void Citadel!')}st++}
+function msg(t){$('m').textContent=t;clearTimeout(msg.t);msg.t=setTimeout(()=>$('m').textContent='',3500)}
+function inter(){if(po)return;let o=os().find(o=>Math.hypot(o.x-P.x,o.y-P.y)<75&&o.t!='st');if(!o)return;
+ if(o.t=='ex')enter('hub');else if(o.t=='fg')pf();else if(o.t=='sh')ps();else if(o.t=='rb')pr();else if(o.t=='tw')enter('tw');
+ else{let i=+o.t[1];if(!S.un[i]){if(S.coins>=PR[i]){S.coins-=PR[i];S.un[i]=1;msg(WN[i]+' unlocked!');enter(i)}else msg('Need '+f(PR[i])+' coins')}else enter(i)}}
+function hit(){if(po||cd>0)return;cd=.45/(sm('H')*(1+enc(1)));sw=.2;let rg=80*(1+enc(4));
+ mons.forEach(m=>{if(Math.hypot(m.x-P.x,m.y-P.y)<rg+m.r){let d=dmg();m.hp-=d;fl_.push({x:m.x,y:m.y-m.r,t:.8,s:f(d)});let l=enc(3);if(l)P.hp=Math.min(mhp(),P.hp+d*l*.01)}});
+ let k=mons.filter(m=>m.hp<=0);k.forEach(m=>S.coins+=(cur=='tw'?5*fl:WR[cur])*(1+enc(2))*(m.sh?50:1));mons=mons.filter(m=>m.hp>0)}
+// ---------- update/draw ----------
+function up(dt){let dx=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0);
+ if(!dx&&!dy&&tgt){let a=tgt.x-P.x,b=tgt.y-P.y,d=Math.hypot(a,b);if(d<6)tgt=null;else{dx=a/d;dy=b/d}}else if(dx||dy)tgt=null;
+ let l=Math.hypot(dx,dy)||1;if(dx)face=dx>0?1:-1;P.x=Math.max(24,Math.min(W-24,P.x+dx/l*190*dt));P.y=Math.max(50,Math.min(H-20,P.y+dy/l*190*dt));
+ cd-=dt;sw-=dt;trn=0;let s=os().find(o=>o.t=='st');if(s&&Math.hypot(s.x-P.x,s.y-P.y)<55){S.str+=dt*tm();trn=1}
+ let df=def();mons.forEach(m=>{let a=P.x-m.x,b=P.y-m.y,d=Math.hypot(a,b)||1;if(d>m.r+12){m.x+=a/d*m.sp*dt;m.y+=b/d*m.sp*dt}m.cd-=dt;
+  if(d<m.r+16&&m.cd<=0){P.hp-=m.dm*100/(100+df);m.cd=1}
+  if(m.sh){m.sh-=dt;if(m.sh<=0){m.sh=m.hp<m.mh/2?1:2;for(let i=0;i<10;i++){let q=i/10*6.28+Math.random();pr_.push({x:m.x,y:m.y,vx:Math.cos(q)*150,vy:Math.sin(q)*150,t:4})}}}});
+ pr_.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.t-=dt;if(Math.hypot(p.x-P.x,p.y-P.y)<14){P.hp-=500*100/(100+df);p.t=0}});pr_=pr_.filter(p=>p.t>0);
+ fl_.forEach(q=>{q.t-=dt;q.y-=30*dt});fl_=fl_.filter(q=>q.t>0);
+ if(cur=='hub'||trn)P.hp=Math.min(mhp(),P.hp+mhp()*.1*dt);P.hp=Math.min(P.hp,mhp());
+ if(P.hp<=0){enter('hub');P.hp=mhp();msg('You fainted and woke up in the hub...')}
+ if(cur!='hub'&&!mons.length){if(!pend){pend=1;wt=2;clear()}else if((wt-=dt)<=0){pend=0;ns()}}}
+function tx(t,x,y,c,sz){g.fillStyle=c;g.font='bold '+sz+'px sans-serif';g.textAlign='center';g.fillText(t,x,y)}
+function dr(){g.fillStyle=cur=='hub'?'#4a8a4a':cur=='tw'?'#444':WC[cur];g.fillRect(0,0,W,H);g.fillStyle='#0001';for(let i=0;i<30;i++)for(let j=0;j<18;j++)if((i+j)%2)g.fillRect(i*30,j*30,30,30);
+ os().forEach(o=>{if(o.t=='st'){g.save();g.shadowColor='#ff0';g.shadowBlur=trn?25:10;g.fillStyle='#ca2';g.beginPath();g.ellipse(o.x,o.y,48,24,0,0,7);g.fill();g.restore();tx('TRAINING x'+tm(),o.x,o.y+4,'#000',11);tx('Str '+f(S.str),o.x,o.y-30,'#fff',12);return}
+  g.save();g.shadowColor=o.c;g.shadowBlur=16;g.fillStyle=o.c;if(o.t[0]=='w'||o.t=='ex'||o.t=='tw'){g.beginPath();g.ellipse(o.x,o.y,28,38,0,0,7);g.fill();g.fillStyle='#000a';g.beginPath();g.ellipse(o.x,o.y,18,28,0,0,7);g.fill()}else g.fillRect(o.x-30,o.y-25,60,50);g.restore();tx(o.l,o.x,o.y+(o.t=='fg'||o.t=='sh'||o.t=='rb'?42:58),'#fff',12)});
+ [...mons.map(m=>({y:m.y,f:()=>drawM(m)})),{y:P.y,f:drawP}].sort((a,b)=>a.y-b.y).forEach(e=>e.f());
+ g.fillStyle='#f4f';pr_.forEach(p=>{g.beginPath();g.arc(p.x,p.y,6,0,7);g.fill()});fl_.forEach(q=>tx(q.s,q.x,q.y,'#ff8',13));
+ g.strokeStyle='#5a3a1a';g.lineWidth=10;g.strokeRect(5,45,W-10,H-50)}
+function hud(){$('h').innerHTML=`${cur=='hub'?'Hub':cur=='tw'?'Tower F'+fl:WN[cur]+' - Stage '+Math.min(st,3)}${boss?' - BOSS':''} | Coins ${f(S.coins)} | HP ${Math.ceil(P.hp)}/${mhp()} | Dmg ${f(dmg())} | Str ${f(S.str)} | Rebirth ${S.reb} | Luck x${luck().toFixed(2)} | <span style="color:${RC[WP[S.eq].r]}">${WP[S.eq].n}</span>`}
+// ---------- panels ----------
+const K={};onkeydown=e=>{K[e.key.toLowerCase()]=1;if(e.key.toLowerCase()=='e')inter();if(e.key==' '){hit();e.preventDefault()}};onkeyup=e=>K[e.key.toLowerCase()]=0;
+cv.onpointerdown=e=>{let r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;let o=os().find(o=>o.t!='st'&&Math.hypot(o.x-x,o.y-y)<45);
+ if(o&&Math.hypot(o.x-P.x,o.y-P.y)<75){inter();return}tgt={x,y};hit()};
+function show(h){po=1;$('p').style.display='block';$('p').innerHTML=h+'<p><button onclick="cp()">Close</button></p>'}
+function cp(){po=0;$('p').style.display='none'}
+let fm=0,sel=[],res='';
+function pf(){let h=`<h3>Forge</h3><p><button class="${fm?'':'on'}" onclick="fm=0;pf()">Weapon</button><button class="${fm?'on':''}" onclick="fm=1;pf()">Armor</button></p><p>Pick ore types (5 of each used). The best ore tier you pick sets the maximum rarity; more luck = better rarity. Common ores only make Common; Common+Uncommon can make both.</p>`;
+ S.ores.forEach((n,t)=>h+=`<button class="o${sel.includes(t)?' on':''}" style="--c:${RC[t]}" onclick="tg(${t})"><i class="${t>=3?'glow':''}" style="background:${RC[t]}"></i>${ON[t]} x${n}</button>`);
+ h+=`<p>Max rarity: <b>${sel.length?RN[Math.max(...sel)]:'-'}</b> &nbsp; <button onclick="craft()">Forge ${fm?'Armor':'Weapon'}</button></p><p>${res}</p><p>Owned: ${Object.keys(S.w).length}/130 weapons</p>`;show(h)}
+function tg(t){sel=sel.includes(t)?sel.filter(x=>x!=t):[...sel,t];pf()}
+function craft(){if(!sel.length||sel.some(t=>S.ores[t]<5)){res='Select ore types you have at least 5 of.';return pf()}
+ sel.forEach(t=>S.ores[t]-=5);let m=Math.max(...sel),r=m,p=Math.min(.9,.3+luck()*.02);while(r>0&&Math.random()>p)r--;let it;
+ if(fm){it=AR.filter(a=>a.r==r)[Math.floor(Math.random()*3)];if(S.a[it.id]){S.coins+=it.def*10;res='Duplicate '+it.n+' - sold.'}else{S.a[it.id]=1;res=`Forged <b style="color:${RC[r]}">${RN[r]} ${it.n}</b> (Def ${it.def})`;if(S.ea<0||AR[S.ea].def<it.def)S.ea=it.id}}
+ else{let pool=WP.filter(w=>w.r==r);if(r==7){let nm=pool.filter(w=>w.sp),ex=pool.filter(w=>!w.sp);pool=Math.random()<Math.min(.15,luck()*.01)?nm:ex}it=pool[Math.floor(Math.random()*pool.length)];
+  if(S.w[it.id]){S.coins+=it.d*5;res='Duplicate '+it.n+' - sold for coins.'}else{S.w[it.id]=1;res=`Forged <b style="color:${RC[r]}">${RN[r]} ${it.n}</b> (Dmg ${f(it.d)})`}}
+ pf()}
+function pb(){let h=`<h3>Bag</h3><canvas id="pv" width="90" height="110"></canvas> Equipped: <b>${WP[S.eq].n}</b> (${f(WP[S.eq].d)}) <p>Enchants on sword: ${(S.en[S.eq]||[]).map(k=>EN[k][0]).join(', ')||'none'}</p><p>Unused enchants: `;
+ S.ei.forEach((k,i)=>h+=`<button onclick="ap(${i})">${EN[k][0]}</button>`);h+='</p><h4>Weapons</h4>';
+ Object.keys(S.w).map(i=>WP[i]).sort((a,b)=>b.d-a.d).forEach(w=>h+=`<button onclick="S.eq=${w.id};pb()" style="border-color:${w.col}"><span style="color:${w.col}">${w.n}</span> ${f(w.d)}</button>`);
+ h+='<h4>Armor</h4><button onclick="S.ea=-1;pb()">None</button>';Object.keys(S.a).map(i=>AR[i]).forEach(a=>h+=`<button onclick="S.ea=${a.id};pb()" style="border-color:${RC[a.r]}">${a.n} (${a.def})</button>`);
+ show(h);let c=$('pv').getContext('2d');dw(c,WP[S.eq],45,95,0,1.4)}
+function ap(i){let a=S.en[S.eq]=S.en[S.eq]||[];if(a.length>=5){msg('Max 5 enchants per sword');return}a.push(S.ei.splice(i,1)[0]);pb()}
+function ps(){let cost=100*(1+S.rolls)**1.3|0,h=`<h3>Skill Shrine</h3><p>Roll a skill (D to SS). Higher tiers keep replacing lower ones. Luck helps.</p>`;
+ for(let k in SKN)h+=`<p>${SKN[k]}: <b>${S.sk[k]!=null?TN[S.sk[k]]+' (x'+TM[S.sk[k]]+')':'none'}</b></p>`;
+ h+=`<button onclick="roll(${cost})">Roll skill - ${f(cost)} coins</button><p>${res}</p>`;show(h)}
+function roll(c){if(S.coins<c){res='Not enough coins';return ps()}S.coins-=c;S.rolls++;let w=TW.map((x,i)=>x*Math.pow(luck(),i*.15)),t=Math.random()*w.reduce((a,b)=>a+b),i=0;while(t>w[i]){t-=w[i];i++}
+ let k=Object.keys(SKN)[Math.floor(Math.random()*4)];res=`Rolled ${SKN[k]} <b>${TN[i]}</b>`+(S.sk[k]==null||i>S.sk[k]?' - equipped!':' - not better, discarded.');if(S.sk[k]==null||i>S.sk[k])S.sk[k]=i;ps()}
+function pr(){let need=Math.floor(600*(S.reb+1)**1.5);show(`<h3>Rebirth</h3><p>Rebirth ${S.reb}. Resets Strength and coins, keeps weapons, ores, skills. Training station: 1.5x now, 2x at rebirth 2, 4x at rebirth 5, 8x at rebirth 10.</p><p>Need ${f(need)} Strength (you have ${f(S.str)}).</p><button onclick="rb(${need})">Rebirth</button>`)}
+function rb(n){if(S.str<n){msg('Not enough Strength');return}S.str=0;S.coins=50;S.reb++;cp();enter('hub');msg('Reborn! Training is now x'+tm())}
+let last=0;(function L(t){let dt=Math.min(.05,(t-last)/1e3||0);last=t;if(!po)up(dt);dr();hud();requestAnimationFrame(L)})(0);
+</script></body></html>
